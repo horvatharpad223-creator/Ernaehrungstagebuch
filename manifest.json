@@ -1,0 +1,8 @@
+{
+  "name": "Ernährungstagebuch",
+  "short_name": "ET",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2b5b84" ]
+}
