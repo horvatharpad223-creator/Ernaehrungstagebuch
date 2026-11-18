@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<!-- saved from url=(0047)https://img.marburg.de/stadta_mr/ced/index.html -->
+<html lang="de"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ernährungs- &amp; Gesundheitstagebuch</title>
+    <style>
+        :root { --primary: #2c3e50; --accent: #3498db; --bg: #f4f7f6; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding: 12px; color: #333; }
+        .card { background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 16px; }
+        h2, h3 { margin-top: 0; color: var(--primary); }
+        .grid-shortcuts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px; }
+        button { background: var(--accent); color: white; border: none; padding: 10px 14px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        button.secondary { background: #7f8c8d; }
+        button.action { background: #27ae60; width: 100%; padding: 12px; margin-top: 8px; }
+        input, select, textarea { width: 100%; padding: 10px; margin: 6px 0 12px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        .summary-bar { display: flex; justify-content: space-between; font-weight: bold; background: #eef6fb; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
+        .warning { background: #ffeaa7; color: #d63031; padding: 10px; border-radius: 8px; margin-bottom: 12px; display: none; font-weight: bold; }
+        .log-item { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding: 8px 0; font-size: 0.9em; }
+        .log-item:last-child { border: none; }
+        .delete-btn { background: #e74c3c; padding: 4px 8px; font-size: 0.8em; border-radius: 4px; margin-left: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Tagesübersicht (Heute)</h2>
+        <div class="summary-bar">
+            <span>Kalorien: <span id="cal-count">0</span> kcal</span>
+            <span>Flüssigkeit: <span id="water-count">0</span> ml</span>
+        </div>
+        <div id="water-warning" class="warning" style="display: block;">⚠️ Hinweis: Bis jetzt erst wenig getrunken! Auf ausreichende Flüssigkeitszufuhr achten.</div>
+        <div id="pattern-insight" class="warning" style="background: rgb(232, 244, 248); color: rgb(41, 128, 185); display: none;"></div>
+    </div>
+
+    <div class="card">
+        <h3>Schnellauswahl (Shortcuts)</h3>
+        <div id="shortcuts-grid" class="grid-shortcuts"><button>☕ Kaffee (200ml)</button><button>🍵 Tee (250ml)</button><button>💧 Wasser (300ml)</button><button>🥪 Brot m. Wurst (120g)</button></div>
+    </div>
+
+    <div class="card">
+        <h3>Neuer Eintrag</h3>
+        <form id="entry-form">
+            <label>Kategorie:</label>
+            <select id="type" onchange="toggleFields()">
+                <option value="Speise">Speise</option>
+                <option value="Getränk">Getränk</option>
+                <option value="Stuhlgang">Stuhlgang</option>
+                <option value="Wasserlassen">Wasserlassen</option>
+            </select>
+
+            <label>Beschreibung / Details:</label>
+            <input type="text" id="desc" placeholder="z. B. Nudeln mit Soße, Fest, etc." required="">
+
+            <div id="gram-group">
+                <label>Menge in Gramm (g):</label>
+                <input type="number" id="grams" value="150">
+            </div>
+
+            <div id="water-group" style="display:none;">
+                <label>Menge in Milliliter (ml):</label>
+                <input type="number" id="ml" value="250">
+            </div>
+
+            <button type="submit" class="action">Eintrag speichern</button>
+            <button type="button" onclick="saveAsShortcut()" class="secondary" style="width: 100%; margin-top: 6px; background: #2980b9;">⭐ Als Shortcut speichern</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Verlauf &amp; Export</h3>
+        <button onclick="exportViaEmail()" class="action" style="background: #8e44ad;">✉️ Daten per E-Mail senden</button>
+        <button onclick="exportCSV()" class="secondary" style="width: 100%; margin-top: 6px;">📥 CSV Herunterladen</button>
+        <button onclick="clearData()" class="secondary" style="width: 100%; margin-top: 6px; background: #e74c3c;">🗑️ Alle Daten zurücksetzen</button>
+        
+        <h4 style="margin-top: 16px;">Letzte Einträge:</h4>
+        <div id="log-list"></div>
+    </div>
+
+<script>
+    let entries = JSON.parse(localStorage.getItem('health_log')) || [];
+    let shortcuts = JSON.parse(localStorage.getItem('health_shortcuts')) || [
+        { name: 'Tasse Kaffee', ml: 200, grams: 0, kcal: 5, type: 'Getränk', label: '☕ Kaffee (200ml)' },
+        { name: 'Glas Tee', ml: 250, grams: 0, kcal: 2, type: 'Getränk', label: '🍵 Tee (250ml)' },
+        { name: 'Glas Wasser', ml: 300, grams: 0, kcal: 0, type: 'Getränk', label: '💧 Wasser (300ml)' },
+        { name: 'Brot mit Wurst', ml: 0, grams: 120, kcal: 320, type: 'Speise', label: '🥪 Brot m. Wurst (120g)' }
+    ];
+
+    function toggleFields() {
+        const type = document.getElementById('type').value;
+        document.getElementById('gram-group').style.display = (type === 'Speise') ? 'block' : 'none';
+        document.getElementById('water-group').style.display = (type === 'Getränk') ? 'block' : 'none';
+    }
+
+    document.getElementById('entry-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+        processEntry(false);
+    });
+
+    function processEntry(isShortcutSave) {
+        const type = document.getElementById('type').value;
+        const desc = document.getElementById('desc').value.trim();
+        if (!desc) return alert("Bitte eine Beschreibung eingeben.");
+
+        const grams = parseInt(document.getElementById('grams').value) || 0;
+        const ml = parseInt(document.getElementById('ml').value) || 0;
+        
+        // Pauschale Kalorienschätzung für Speisen: ~1.6 kcal pro Gramm als Richtwert
+        let calories = 0;
+        if (type === 'Speise') {
+            calories = Math.round(grams * 1.6);
+        }
+
+        const now = new Date();
+        const entry = {
+            id: Date.now(),
+            timestamp: now.toLocaleString('de-DE'),
+            dateStr: now.toISOString().split('T')[0],
+            hour: now.getHours(),
+            type, desc, calories, ml, grams
+        };
+
+        if (isShortcutSave) {
+            let shortcutLabel = desc;
+            if (type === 'Speise') shortcutLabel += ` (${grams}g)`;
+            if (type === 'Getränk') shortcutLabel += ` (${ml}ml)`;
+            
+            shortcuts.push({ name: desc, ml, grams, kcal: calories, type, label: shortcutLabel });
+            localStorage.setItem('health_shortcuts', JSON.stringify(shortcuts));
+            renderShortcuts();
+            alert("Als Shortcut gespeichert!");
+        } else {
+            entries.unshift(entry);
+            saveAndRefresh();
+            document.getElementById('entry-form').reset();
+            toggleFields();
+        }
+    }
+
+    function saveAsShortcut() {
+        processEntry(true);
+    }
+
+    function addShortcut(s) {
+        const now = new Date();
+        entries.unshift({
+            id: Date.now(),
+            timestamp: now.toLocaleString('de-DE'),
+            dateStr: now.toISOString().split('T')[0],
+            hour: now.getHours(),
+            type: s.type,
+            desc: s.name,
+            calories: s.kcal,
+            ml: s.ml,
+            grams: s.grams
+        });
+        saveAndRefresh();
+    }
+
+    function deleteEntry(id) {
+        entries = entries.filter(e => e.id !== id);
+        saveAndRefresh();
+    }
+
+    function saveAndRefresh() {
+        localStorage.setItem('health_log', JSON.stringify(entries));
+        render();
+    }
+
+    function renderShortcuts() {
+        const grid = document.getElementById('shortcuts-grid');
+        grid.innerHTML = '';
+        shortcuts.forEach((s, idx) => {
+            const btn = document.createElement('button');
+            btn.innerHTML = s.label;
+            btn.onclick = () => addShortcut(s);
+            grid.appendChild(btn);
+        });
+    }
+
+    function render() {
+        renderShortcuts();
+        const list = document.getElementById('log-list');
+        list.innerHTML = '';
+        
+        const todayStr = new Date().toISOString().split('T')[0];
+        let todayCal = 0;
+        let todayWater = 0;
+
+        entries.forEach(e => {
+            if (e.dateStr === todayStr) {
+                todayCal += e.calories;
+                todayWater += e.ml;
+            }
+
+            const item = document.createElement('div');
+            item.className = 'log-item';
+            let details = e.desc;
+            if (e.grams >  0) details += ` (${e.grams}g, ca. ${e.calories} kcal)`;
+            if (e.ml > 0) details += ` (${e.ml} ml)`;
+
+            item.innerHTML = `
+                <div><strong>${e.timestamp}</strong> - <em>${e.type}</em>: ${details}</div>
+                <button class="delete-btn" onclick="deleteEntry(${e.id})">X</button>
+            `;
+            list.appendChild(item);
+        });
+
+        document.getElementById('cal-count').innerText = todayCal;
+        document.getElementById('water-count').innerText = todayWater;
+
+        // Warnung für Flüssigkeit (< 1500ml Ziel)
+        const waterWarn = document.getElementById('water-warning');
+        waterWarn.style.display = (todayWater < 1500) ? 'block' : 'none';
+
+        // Mustererkennung (z.B. Stuhlgang-Häufigkeit)
+        const stoolEntries = entries.filter(e => e.type === 'Stuhlgang' && e.dateStr === todayStr);
+        const insightBox = document.getElementById('pattern-insight');
+        if (stoolEntries.length >= 3) {
+            insightBox.innerText = "💡 Hinweis: Heute erhöhte Stuhlgangs-Frequenz festgestellt.";
+            insightBox.style.display = 'block';
+        } else {
+            insightBox.style.display = 'none';
+        }
+    }
+
+    function exportViaEmail() {
+        if (entries.length === 0) return alert("Keine Daten zum Exportieren vorhanden.");
+        
+        let bodyText = "Ernährungs- und Gesundheitstagebuch Export:\n\n";
+        entries.forEach(e => {
+            bodyText += `[${e.timestamp}] ${e.type}: ${e.desc} | Menge: ${e.grams || e.ml} ${e.grams ? 'g' : 'ml'} | ${e.calories} kcal\n`;
+        });
+
+        const mailtoLink = `mailto:?subject=Mein Ernährungstagebuch Export&body=${encodeURIComponent(bodyText)}`;
+        window.location.href = mailtoLink;
+    }
+
+    function exportCSV() {
+        if (entries.length === 0) return alert("Keine Daten vorhanden.");
+        let csv = "Zeitstempel;Typ;Beschreibung;Menge_Gramm_oder_Ml;Kalorien\n";
+        entries.forEach(e => {
+            csv += `"${e.timestamp}";"${e.type}";"${e.desc}";${e.grams || e.ml};${e.calories}\n`;
+        });
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.setAttribute("download", `tagebuch_export_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function clearData() {
+        if (confirm("Wirklich alle Einträge löschen?")) {
+            entries = [];
+            saveAndRefresh();
+        }
+    }
+
+    render();
+</script>
+
+</body></html>
